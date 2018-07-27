@@ -1,0 +1,5 @@
+CXXFLAGS=-g -I../src -DVERIFY=1
+
+all:
+	g++ scalar_4x64_impl.cpp ${CXXFLAGS} -c -o scalar_4x64_impl.o
+	ar rcs xxxx.a *.o
