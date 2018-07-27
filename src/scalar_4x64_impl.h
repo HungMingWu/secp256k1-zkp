@@ -149,9 +149,11 @@ static int secp256k1_scalar_wnaf_force_odd(secp256k1_scalar_t *r) {
     uint64_t tl, th; \
     { \
         uint128_t t = (uint128_t)a * b; \
+	printf("t: %llu\n", t); \
         th = t >> 64;         /* at most 0xFFFFFFFFFFFFFFFE */ \
         tl = t; \
     } \
+    printf("tl = %lu, th = %lu\n", tl, th); \
     c0 += tl;                 /* overflow is handled on the next line */ \
     th += (c0 < tl) ? 1 : 0;  /* at most 0xFFFFFFFFFFFFFFFF */ \
     c1 += th;                 /* never overflows by contract (verified in the next line) */ \
@@ -215,6 +217,8 @@ static int secp256k1_scalar_wnaf_force_odd(secp256k1_scalar_t *r) {
 
 static void secp256k1_scalar_reduce_512(secp256k1_scalar_t *r, const uint64_t *l) {
     uint128_t c;
+    printf("Reduce %lu %lu %lu %lu\n", r->d[0], r->d[1], r->d[2], r->d[3]);
+    printf("l %lu %lu %lu %lu\n%lu %lu %lu %lu\n", l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7]);
     uint64_t c0, c1, c2;
     uint64_t n0 = l[4], n1 = l[5], n2 = l[6], n3 = l[7];
     uint64_t m0, m1, m2, m3, m4, m5;
@@ -225,9 +229,14 @@ static void secp256k1_scalar_reduce_512(secp256k1_scalar_t *r, const uint64_t *l
     /* Reduce 512 bits into 385. */
     /* m[0..6] = l[0..3] + n[0..3] * SECP256K1_N_C. */
     c0 = l[0]; c1 = 0; c2 = 0;
+    printf("n0, SECP256K1_N_C_0 %lu %lu\n", n0, SECP256K1_N_C_0);
     muladd_fast(n0, SECP256K1_N_C_0);
+    printf("c0 c1: %lu %lu\n", c0, c1);
+    printf("n0: %lu\n", n0);
     extract_fast(m0);
+    printf("m0: %lu\n", m0);
     sumadd_fast(l[1]);
+    printf("l[1] %lu\n", l[1]);
     muladd(n1, SECP256K1_N_C_0);
     muladd(n0, SECP256K1_N_C_1);
     extract(m1);
@@ -283,6 +292,7 @@ static void secp256k1_scalar_reduce_512(secp256k1_scalar_t *r, const uint64_t *l
 
     /* Final reduction of r. */
     secp256k1_scalar_reduce_cpp(r, c + secp256k1_scalar_check_overflow(r));
+    printf("Final Reduce %lu %lu %lu %lu\n", r->d[0], r->d[1], r->d[2], r->d[3]);
 }
 
 static void secp256k1_scalar_mul_512(uint64_t l[8], const secp256k1_scalar_t *a, const secp256k1_scalar_t *b) {

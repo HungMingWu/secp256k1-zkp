@@ -1,0 +1,24 @@
+#include <stdint.h>
+
+#include "secp256k1.c"
+
+static void secp256k1_scalar_reduce_512(secp256k1_scalar_t *r, const uint64_t *l);
+int main()
+{
+	secp256k1_scalar_t s;
+	s.d[0] = 140728502807008ULL;
+	s.d[1] = 140728502806976ULL;
+	s.d[2] = 140728502806752ULL;
+	s.d[3] = 3899353216ULL;
+	uint64_t l[8] = {
+		18194032549078317450ULL,
+		250588684186417391ULL,
+		3685983172965523610ULL,
+		2224959343176547323ULL,
+	      	13837524703534255494ULL,
+		9853571090186399576ULL, 
+		8676923103002388229ULL,
+		940382081478905957ULL
+	};
+	secp256k1_scalar_reduce_512(&s, l);
+}
