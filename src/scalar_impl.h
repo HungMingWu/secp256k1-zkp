@@ -16,13 +16,7 @@
 #include "libsecp256k1-config.h"
 #endif
 
-#if defined(USE_SCALAR_4X64)
 #include "scalar_4x64_impl.h"
-#elif defined(USE_SCALAR_8X32)
-#include "scalar_8x32_impl.h"
-#else
-#error "Please select scalar implementation"
-#endif
 
 #ifndef USE_NUM_NONE
 static void secp256k1_scalar_get_num(secp256k1_num_t *r, const secp256k1_scalar_t *a) {
