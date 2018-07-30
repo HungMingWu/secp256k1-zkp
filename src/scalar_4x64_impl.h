@@ -129,59 +129,6 @@ static int secp256k1_scalar_wnaf_force_odd(secp256k1_scalar_t *r) {
 
 /* Inspired by the macros in OpenSSL's crypto/bn/asm/x86_64-gcc.c. */
 
-/** Add a*b to the number defined by (c0,c1,c2). c2 must never overflow. */
-#define muladd(a,b) { \
-    uint64_t tl, th; \
-    { \
-        uint128_t t = (uint128_t)a * b; \
-        th = t >> 64;         /* at most 0xFFFFFFFFFFFFFFFE */ \
-        tl = t; \
-    } \
-    c0 += tl;                 /* overflow is handled on the next line */ \
-    th += (c0 < tl) ? 1 : 0;  /* at most 0xFFFFFFFFFFFFFFFF */ \
-    c1 += th;                 /* overflow is handled on the next line */ \
-    c2 += (c1 < th) ? 1 : 0;  /* never overflows by contract (verified in the next line) */ \
-    VERIFY_CHECK((c1 >= th) || (c2 != 0)); \
-}
-
-/** Add a*b to the number defined by (c0,c1). c1 must never overflow. */
-#define muladd_fast(a,b) { \
-    uint64_t tl, th; \
-    { \
-        uint128_t t = (uint128_t)a * b; \
-	printf("t: %llu\n", t); \
-        th = t >> 64;         /* at most 0xFFFFFFFFFFFFFFFE */ \
-        tl = t; \
-    } \
-    printf("tl = %lu, th = %lu\n", tl, th); \
-    c0 += tl;                 /* overflow is handled on the next line */ \
-    th += (c0 < tl) ? 1 : 0;  /* at most 0xFFFFFFFFFFFFFFFF */ \
-    c1 += th;                 /* never overflows by contract (verified in the next line) */ \
-    VERIFY_CHECK(c1 >= th); \
-}
-
-/** Add 2*a*b to the number defined by (c0,c1,c2). c2 must never overflow. */
-#define muladd2(a,b) { \
-    uint64_t tl, th, th2, tl2; \
-    { \
-        uint128_t t = (uint128_t)a * b; \
-        th = t >> 64;               /* at most 0xFFFFFFFFFFFFFFFE */ \
-        tl = t; \
-    } \
-    th2 = th + th;                  /* at most 0xFFFFFFFFFFFFFFFE (in case th was 0x7FFFFFFFFFFFFFFF) */ \
-    c2 += (th2 < th) ? 1 : 0;       /* never overflows by contract (verified the next line) */ \
-    VERIFY_CHECK((th2 >= th) || (c2 != 0)); \
-    tl2 = tl + tl;                  /* at most 0xFFFFFFFFFFFFFFFE (in case the lowest 63 bits of tl were 0x7FFFFFFFFFFFFFFF) */ \
-    th2 += (tl2 < tl) ? 1 : 0;      /* at most 0xFFFFFFFFFFFFFFFF */ \
-    c0 += tl2;                      /* overflow is handled on the next line */ \
-    th2 += (c0 < tl2) ? 1 : 0;      /* second overflow is handled on the next line */ \
-    c2 += (c0 < tl2) & (th2 == 0);  /* never overflows by contract (verified the next line) */ \
-    VERIFY_CHECK((c0 >= tl2) || (th2 != 0) || (c2 != 0)); \
-    c1 += th2;                      /* overflow is handled on the next line */ \
-    c2 += (c1 < th2) ? 1 : 0;       /* never overflows by contract (verified the next line) */ \
-    VERIFY_CHECK((c1 >= th2) || (c2 != 0)); \
-}
-
 /** Add a to the number defined by (c0,c1,c2). c2 must never overflow. */
 #define sumadd(a) { \
     unsigned int over; \
@@ -215,151 +162,23 @@ static int secp256k1_scalar_wnaf_force_odd(secp256k1_scalar_t *r) {
     VERIFY_CHECK(c2 == 0); \
 }
 
+extern void secp256k1_scalar_reduce_512_cpp(secp256k1_scalar_t *r, const uint64_t *l);
 static void secp256k1_scalar_reduce_512(secp256k1_scalar_t *r, const uint64_t *l) {
-    uint128_t c;
-    printf("Reduce %lu %lu %lu %lu\n", r->d[0], r->d[1], r->d[2], r->d[3]);
-    printf("l %lu %lu %lu %lu\n%lu %lu %lu %lu\n", l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7]);
-    uint64_t c0, c1, c2;
-    uint64_t n0 = l[4], n1 = l[5], n2 = l[6], n3 = l[7];
-    uint64_t m0, m1, m2, m3, m4, m5;
-    uint32_t m6;
-    uint64_t p0, p1, p2, p3;
-    uint32_t p4;
-
-    /* Reduce 512 bits into 385. */
-    /* m[0..6] = l[0..3] + n[0..3] * SECP256K1_N_C. */
-    c0 = l[0]; c1 = 0; c2 = 0;
-    printf("n0, SECP256K1_N_C_0 %lu %lu\n", n0, SECP256K1_N_C_0);
-    muladd_fast(n0, SECP256K1_N_C_0);
-    printf("c0 c1: %lu %lu\n", c0, c1);
-    printf("n0: %lu\n", n0);
-    extract_fast(m0);
-    printf("m0: %lu\n", m0);
-    sumadd_fast(l[1]);
-    printf("l[1] %lu\n", l[1]);
-    muladd(n1, SECP256K1_N_C_0);
-    muladd(n0, SECP256K1_N_C_1);
-    extract(m1);
-    sumadd(l[2]);
-    muladd(n2, SECP256K1_N_C_0);
-    muladd(n1, SECP256K1_N_C_1);
-    sumadd(n0);
-    extract(m2);
-    sumadd(l[3]);
-    muladd(n3, SECP256K1_N_C_0);
-    muladd(n2, SECP256K1_N_C_1);
-    sumadd(n1);
-    extract(m3);
-    muladd(n3, SECP256K1_N_C_1);
-    sumadd(n2);
-    extract(m4);
-    sumadd_fast(n3);
-    extract_fast(m5);
-    VERIFY_CHECK(c0 <= 1);
-    m6 = c0;
-
-    /* Reduce 385 bits into 258. */
-    /* p[0..4] = m[0..3] + m[4..6] * SECP256K1_N_C. */
-    c0 = m0; c1 = 0; c2 = 0;
-    muladd_fast(m4, SECP256K1_N_C_0);
-    extract_fast(p0);
-    sumadd_fast(m1);
-    muladd(m5, SECP256K1_N_C_0);
-    muladd(m4, SECP256K1_N_C_1);
-    extract(p1);
-    sumadd(m2);
-    muladd(m6, SECP256K1_N_C_0);
-    muladd(m5, SECP256K1_N_C_1);
-    sumadd(m4);
-    extract(p2);
-    sumadd_fast(m3);
-    muladd_fast(m6, SECP256K1_N_C_1);
-    sumadd_fast(m5);
-    extract_fast(p3);
-    p4 = c0 + m6;
-    VERIFY_CHECK(p4 <= 2);
-
-    /* Reduce 258 bits into 256. */
-    /* r[0..3] = p[0..3] + p[4] * SECP256K1_N_C. */
-    c = p0 + (uint128_t)SECP256K1_N_C_0 * p4;
-    r->d[0] = c & 0xFFFFFFFFFFFFFFFFULL; c >>= 64;
-    c += p1 + (uint128_t)SECP256K1_N_C_1 * p4;
-    r->d[1] = c & 0xFFFFFFFFFFFFFFFFULL; c >>= 64;
-    c += p2 + (uint128_t)p4;
-    r->d[2] = c & 0xFFFFFFFFFFFFFFFFULL; c >>= 64;
-    c += p3;
-    r->d[3] = c & 0xFFFFFFFFFFFFFFFFULL; c >>= 64;
-
-    /* Final reduction of r. */
-    secp256k1_scalar_reduce_cpp(r, c + secp256k1_scalar_check_overflow(r));
-    printf("Final Reduce %lu %lu %lu %lu\n", r->d[0], r->d[1], r->d[2], r->d[3]);
+    secp256k1_scalar_reduce_512_cpp(r, l);
 }
 
+extern void secp256k1_scalar_mul_512_cpp(uint64_t l[8], const secp256k1_scalar_t *a, const secp256k1_scalar_t *b);
 static void secp256k1_scalar_mul_512(uint64_t l[8], const secp256k1_scalar_t *a, const secp256k1_scalar_t *b) {
-    /* 160 bit accumulator. */
-    uint64_t c0 = 0, c1 = 0;
-    uint32_t c2 = 0;
-
-    /* l[0..7] = a[0..3] * b[0..3]. */
-    muladd_fast(a->d[0], b->d[0]);
-    extract_fast(l[0]);
-    muladd(a->d[0], b->d[1]);
-    muladd(a->d[1], b->d[0]);
-    extract(l[1]);
-    muladd(a->d[0], b->d[2]);
-    muladd(a->d[1], b->d[1]);
-    muladd(a->d[2], b->d[0]);
-    extract(l[2]);
-    muladd(a->d[0], b->d[3]);
-    muladd(a->d[1], b->d[2]);
-    muladd(a->d[2], b->d[1]);
-    muladd(a->d[3], b->d[0]);
-    extract(l[3]);
-    muladd(a->d[1], b->d[3]);
-    muladd(a->d[2], b->d[2]);
-    muladd(a->d[3], b->d[1]);
-    extract(l[4]);
-    muladd(a->d[2], b->d[3]);
-    muladd(a->d[3], b->d[2]);
-    extract(l[5]);
-    muladd_fast(a->d[3], b->d[3]);
-    extract_fast(l[6]);
-    VERIFY_CHECK(c1 <= 0);
-    l[7] = c0;
+    secp256k1_scalar_mul_512_cpp(l, a, b);
 }
 
+extern void secp256k1_scalar_sqr_512_cpp(uint64_t l[8], const secp256k1_scalar_t *a);
 static void secp256k1_scalar_sqr_512(uint64_t l[8], const secp256k1_scalar_t *a) {
-    /* 160 bit accumulator. */
-    uint64_t c0 = 0, c1 = 0;
-    uint32_t c2 = 0;
-
-    /* l[0..7] = a[0..3] * b[0..3]. */
-    muladd_fast(a->d[0], a->d[0]);
-    extract_fast(l[0]);
-    muladd2(a->d[0], a->d[1]);
-    extract(l[1]);
-    muladd2(a->d[0], a->d[2]);
-    muladd(a->d[1], a->d[1]);
-    extract(l[2]);
-    muladd2(a->d[0], a->d[3]);
-    muladd2(a->d[1], a->d[2]);
-    extract(l[3]);
-    muladd2(a->d[1], a->d[3]);
-    muladd(a->d[2], a->d[2]);
-    extract(l[4]);
-    muladd2(a->d[2], a->d[3]);
-    extract(l[5]);
-    muladd_fast(a->d[3], a->d[3]);
-    extract_fast(l[6]);
-    VERIFY_CHECK(c1 == 0);
-    l[7] = c0;
+    secp256k1_scalar_sqr_512_cpp(l, a);
 }
 
 #undef sumadd
 #undef sumadd_fast
-#undef muladd
-#undef muladd_fast
-#undef muladd2
 #undef extract
 #undef extract_fast
 
